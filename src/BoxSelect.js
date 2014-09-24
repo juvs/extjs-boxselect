@@ -253,10 +253,11 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
         '<div id="{cmpId}-listWrapper" class="x-boxselect {fieldCls} {typeCls}">',
         '<ul id="{cmpId}-itemList" class="x-boxselect-list">',
         '<li id="{cmpId}-inputElCt" class="x-boxselect-input">',
-        '<div id="{cmpId}-emptyEl" class="{emptyCls}">{emptyText}</div>',
-        '<input id="{cmpId}-inputEl" type="{type}" ',
+        '<div class="{hiddenDataCls}" role="presentation"></div>',
+        '<input id="{cmpId}-inputEl" type="{type}" role="{role}" {inputAttrTpl} class="{fieldCls} {typeCls} {editableCls}" autocomplete="off"',
         '<tpl if="name">name="{name}" </tpl>',
         '<tpl if="value"> value="{[Ext.util.Format.htmlEncode(values.value)]}"</tpl>',
+		'<tpl if="placeholder"> placeholder="{placeholder}"</tpl>',
         '<tpl if="size">size="{size}" </tpl>',
         '<tpl if="tabIdx">tabIndex="{tabIdx}" </tpl>',
         '<tpl if="disabled"> disabled="disabled"</tpl>',
@@ -284,6 +285,11 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
      * @private
      */
     emptyInputCls: 'x-boxselect-emptyinput',
+
+    /**
+     * @private
+     */	
+	hidePlaceholderCls: 'x-boxselect-input-hide-placeholder',
 
     /**
      * @inheritdoc
@@ -465,9 +471,9 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
     afterRender: function() {
         var me = this;
 
-        if (Ext.supports.Placeholder && me.inputEl && me.emptyText) {
+        /*if (Ext.supports.Placeholder && me.inputEl && me.emptyText) {
             delete me.inputEl.dom.placeholder;
-        }
+        }*/
 
         me.bodyEl.applyStyles('vertical-align:top');
 
@@ -628,7 +634,6 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
         valueStore = me.valueStore,
         mergedRecords = [],
         i;
-
         // Only react to selection if it is not called from setValue, and if our list is
         // expanded (ignores changes to the selection model triggered elsewhere)
         if ((me.ignoreSelection <= 0) && me.isExpanded) {
@@ -639,7 +644,6 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
                 }
             });
             mergedRecords = Ext.Array.merge(mergedRecords, selectedRecords);
-
             i = Ext.Array.intersect(mergedRecords, valueStore.getRange()).length;
             if ((i != mergedRecords.length) || (i != me.valueStore.getCount())) {
                 me.setValue(mergedRecords, false);
@@ -690,7 +694,7 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
             selModel = picker.getSelectionModel();
             selModel.deselectAll();
             if (selection.length > 0) {
-                selModel.select(selection);
+                selModel.select(selection, undefined, true);
             }
             if (me.ignoreSelection > 0) {
                 --me.ignoreSelection;
@@ -1073,7 +1077,7 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
             '</tpl>',
             '" qtip="{[typeof values === "string" ? values : values.' + me.displayField + ']}">' ,
             '<div class="x-boxselect-item-text">{[typeof values === "string" ? values : this.getItemLabel(values)]}</div>',
-            '<div class="x-tab-close-btn x-boxselect-item-close"></div>' ,
+            '<div class="box-select-close-btn x-boxselect-item-close"></div>' ,
             '</li>' ,
             '</tpl>',
             {
@@ -1200,14 +1204,16 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
 	 * so that we can use inputEl for user input of just the current value.
 	 */
     setRawValue: function(value) {
-        var me = this,
-        inputEl = me.inputEl,
-        result;
+		var me = this,
+			emptyText = me.emptyText,
+			inputEl = me.inputEl,
+			empty,
+			result;
 
         me.inputEl = false;
         result = me.callParent([value]);
         me.inputEl = inputEl;
-
+		me.applyEmptyText();
         return result;
     },
 
@@ -1279,7 +1285,6 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
             value = value.split(me.delimiter);
         }
         value = Ext.Array.from(value, true);
-
         for (i = 0, len = value.length; i < len; i++) {
             record = value[i];
             if (!record || !record.isModel) {
@@ -1415,7 +1420,6 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
                 return val;
             }, this).join(this.delimiter),
             isEqual = me.isEqual(newValue, lastValue);
-
             if (!isEqual || ((newValue.length > 0 && valueStore.getCount() < newValue.length))) {
                 valueStore.suspendEvents();
                 valueStore.removeAll();
@@ -1473,22 +1477,17 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
             isEmpty = Ext.isEmpty(me.value) && !me.hasFocus;
             inputEl = me.inputEl;
             if (isEmpty) {
-                inputEl.dom.value = '';
-                me.emptyEl.update(emptyText);
-                me.emptyEl.addCls(me.emptyCls);
-                me.emptyEl.removeCls(me.emptyInputCls);
-                me.listWrapper.addCls(me.emptyCls);
-                me.inputEl.addCls(me.emptyInputCls);
+                if (Ext.supports.Placeholder) {
+					me.inputEl.dom.placeholder = emptyText;
+				}
             } else {
-                me.emptyEl.addCls(me.emptyInputCls);
-                me.emptyEl.removeCls(me.emptyCls);
-                me.listWrapper.removeCls(me.emptyCls);
-                me.inputEl.removeCls(me.emptyInputCls);
+				me.inputEl.dom.placeholder = '';
             }
+			
             me.autoSize();
         }
-    },
-
+    },	
+	
     /**
 	 * Overridden to use inputEl instead of raw value and to avoid the use of placeholder
 	 */
@@ -1498,8 +1497,8 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
         emptyText = me.emptyText,
         isEmpty = (inputEl.dom.value == '');
 
-        me.emptyEl.addCls(me.emptyInputCls);
-        me.emptyEl.removeCls(me.emptyCls);
+        //me.emptyEl.addCls(me.emptyInputCls);
+        //me.emptyEl.removeCls(me.emptyCls);
         me.listWrapper.removeCls(me.emptyCls);
         me.inputEl.removeCls(me.emptyInputCls);
 
@@ -1516,7 +1515,9 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
         var me = this,
         focusCls = me.focusCls,
         itemList = me.itemList;
-
+		
+		me.preFocus();
+		
         if (focusCls && itemList) {
             itemList.addCls(focusCls);
         }
@@ -1533,9 +1534,9 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
         focusCls = me.focusCls,
         itemList = me.itemList;
 
-        if (focusCls && itemList) {
-            itemList.removeCls(focusCls);
-        }
+        //if (focusCls && itemList) {
+        //    itemList.removeCls(focusCls);
+        //}
 
         me.callParent(arguments);
     },
@@ -1550,9 +1551,9 @@ Ext.define('Ext.ux.form.field.BoxSelect', {
         itemList = me.itemList,
         hasError = me.hasActiveError();
 
-        if (invalidCls && itemList) {
-            itemList[hasError ? 'addCls' : 'removeCls'](me.invalidCls + '-field');
-        }
+        //if (invalidCls && itemList) {
+        //    itemList[hasError ? 'addCls' : 'removeCls'](me.invalidCls + '-field');
+        //}
 
         me.callParent(arguments);
     },
@@ -1628,7 +1629,7 @@ Ext.define('Ext.ux.layout.component.field.BoxSelectField', {
         var me = this,
             owner = ownerContext.target;
 
-        owner.triggerEl.setStyle('height', '24px');
+        //owner.triggerEl.setStyle('height', '24px');
 
         me.callParent(arguments);
 
@@ -1643,7 +1644,7 @@ Ext.define('Ext.ux.layout.component.field.BoxSelectField', {
     publishInnerWidth:function(ownerContext) {
         var me = this,
             owner = me.owner,
-            width = owner.itemList.getWidth(true) - 10,
+            width = owner.itemList.getWidth(true) - 5,
             lastEntry = owner.inputElCt.prev(null, true);
 
         if (lastEntry && !owner.stacked) {
@@ -1652,7 +1653,7 @@ Ext.define('Ext.ux.layout.component.field.BoxSelectField', {
         }
 
         if (!me.skipInputGrowth && (width < 35)) {
-            width = width - 10;
+            width = width - 5;
         } else if (width < 1) {
             width = 1;
         }
